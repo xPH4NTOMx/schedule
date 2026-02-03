@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard - IT Lampang</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Sarabun', sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex; justify-content: center; align-items: center; 
+            margin: 0; padding: 20px;
+        }
+        .menu-container { 
+            background: rgba(255, 255, 255, 0.98); 
+            padding: 50px; 
+            border-radius: 28px; 
+            box-shadow: 0 25px 60px rgba(0,0,0,0.3); 
+            text-align: center; max-width: 500px; width: 100%;
+        }
+        h2 { color: #2d3436; margin-bottom: 10px; font-size: 1.7rem; }
+        .role-badge { 
+            background: #007bff; color: white; padding: 6px 18px; 
+            border-radius: 50px; font-size: 0.9rem; font-weight: bold;
+            display: inline-block; margin-bottom: 40px;
+        }
+        .menu-grid { display: flex; flex-direction: column; gap: 18px; }
+        .btn { 
+            display: flex; align-items: center; justify-content: center;
+            padding: 18px; border-radius: 16px; text-decoration: none; 
+            color: white; font-weight: bold; font-size: 1.1rem;
+            transition: all 0.3s ease; border: none;
+        }
+        .btn-my-schedule { background: linear-gradient(135deg, #6f42c1, #5a2d91); } 
+        .btn-view { background: linear-gradient(135deg, #2ecc71, #28a745); } 
+        .btn-manage { background: linear-gradient(135deg, #4facfe, #007bff); }
+        .btn-logout { background: linear-gradient(135deg, #f85032, #dc3545); margin-top: 25px; }
+        .btn:hover { transform: translateY(-4px); box-shadow: 0 10px 20px rgba(0,0,0,0.15); filter: brightness(1.05); }
+        
+        .admin-section {
+            margin-top: 10px; padding-top: 10px;
+            border-top: 2px dashed #eee; position: relative;
+        }
+        .admin-label {
+            position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+            background: white; padding: 0 15px; color: #95a5a6; font-size: 0.9rem; font-weight: bold;
+        }
+        .icon { margin-right: 12px; font-size: 1.3rem; }
+    </style>
+</head>
+<body>
+<div class="menu-container">
+    <h2>👋 ยินดีต้อนรับ: <%= fullname %></h2>
+    <div class="role-badge">สิทธิ์การใช้งาน: <%= role %></div>
+
+    <div class="menu-grid">
+        <% if (role !== 'admin') { %>
+            
+            <% if (role === 'student' && (typeof groupId !== 'undefined' && groupId)) { %>
+                <a href="/schedule/<%= groupId %>" class="btn btn-my-schedule">
+                    <span class="icon">⭐</span> ตารางเรียนของฉัน (<%= groupId %>)
+                </a>
+            <% } %>
+
+            <a href="/room/schedule" class="btn btn-view">
+                <span class="icon">🔍</span> เลือกดูตารางกลุ่มอื่น / ห้องเรียน
+            </a>
+
+            <% if (role === 'teacher') { %>
+                <a href="/teacher/schedule" class="btn btn-view">
+                    <span class="icon">👨‍🏫</span> ตารางสอนของฉัน
+                </a>
+            <% } %>
+
+        <% } %>
+
+        <% if (['admin', 'scheduler', 'program_manager'].includes(role)) { %>
+            <div class="admin-section">
+                <span class="admin-label">🛠️ เมนูจัดการระบบ</span>
+                <div class="menu-grid">
+                    <a href="/teacher/schedule" class="btn btn-manage">
+                        <span class="icon">📋</span> ดูตารางสอนผู้สอนทุกคน
+                    </a>
+                    <a href="/admin/manage" class="btn btn-manage">
+                        <span class="icon">⚙️</span> จัดการข้อมูล (วิชา/ห้อง/ครู/กลุ่ม)
+                    </a>
+                    <% if (role === 'admin') { %>
+                        <a href="/admin/users" class="btn btn-manage">
+                            <span class="icon">👥</span> จัดการผู้ใช้งานระบบ
+                        </a>
+                    <% } %>
+                </div>
+            </div>
+        <% } %>
+
+        <a href="/logout" class="btn btn-logout">
+            <span class="icon">🚪</span> ออกจากระบบ
+        </a>
+    </div>
+</div>
+</body>
+</html>

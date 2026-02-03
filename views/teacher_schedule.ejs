@@ -1,0 +1,60 @@
+<style>
+    /* ตกแต่งส่วนคาบเรียน */
+    .subject-cell {
+        padding: 5px !important;
+        vertical-align: middle !important;
+    }
+    .subject-box {
+        background-color: #fce4ec; /* สีชมพูอ่อนตามที่พี่เลือก */
+        border: 1px solid #f8bbd0;
+        border-radius: 6px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        transition: 0.2s;
+    }
+    .subject-code {
+        font-weight: bold;
+        font-size: 12px;
+        color: #c2185b;
+        margin: 2px 0;
+    }
+    .group-tag {
+        font-size: 10px;
+        font-weight: bold;
+        color: #d81b60;
+        background: rgba(216, 27, 96, 0.1);
+        padding: 2px 5px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .room-info {
+        font-size: 9px;
+        color: #888;
+        text-align: right;
+        padding-right: 5px;
+    }
+
+    @media print {
+        .subject-box {
+            background: none !important;
+            border: 1px solid #000 !important;
+            color: #000 !important;
+        }
+        .group-tag { background: none !important; border: 1px solid #ccc !important; }
+    }
+</style>
+
+<td colspan="<%= duration %>" class="subject-cell">
+    <div class="subject-box">
+        <div class="room-info">📍 ห้อง: <%= match.RoomId %></div>
+        <div class="subject-code">ว.<%= match.SubjectSubjectCode %></div>
+        <div style="font-size: 10px; padding: 0 5px; margin-bottom: 3px;">
+            <%= match.Subject ? match.Subject.name_th : '' %>
+        </div>
+        <div>
+            <span class="group-tag">กลุ่ม: <%= match.studentGroupId %></span>
+        </div>
+    </div>
+</td>

@@ -1,0 +1,65 @@
+<style>
+    .manage-form-box { margin-bottom: 30px; }
+    .manage-form-box input { 
+        width: 100%; padding: 12px; margin: 8px 0; 
+        border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; 
+    }
+    .input-row { display: flex; gap: 10px; }
+    .input-row input { width: 33%; }
+    .btn-save { 
+        width: 100%; padding: 12px; background: #28a745; color: white; 
+        border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 5px;
+    }
+    .btn-save:hover { background: #218838; }
+</style>
+
+<div class="manage-form-box">
+    <h2 style="border-bottom: 2px solid #007bff; padding-bottom: 5px;">📚 จัดการข้อมูลรายวิชา</h2>
+    <form action="/add-subject" method="POST">
+        <input type="text" name="subject_code" placeholder="รหัสวิชา (เช่น 31901-2002)" required>
+        <input type="text" name="name_th" placeholder="ชื่อวิชา" required>
+        <div class="input-row">
+            <input type="number" name="theory_hrs" placeholder="ท" title="ทฤษฎี">
+            <input type="number" name="practice_hrs" placeholder="ป" title="ปฏิบัติ">
+            <input type="number" name="credits" placeholder="น" title="หน่วยกิต">
+        </div>
+        <button type="submit" class="btn-save">💾 บันทึกวิชา</button>
+    </form>
+</div>
+
+<div class="manage-form-box">
+    <h2 style="border-bottom: 2px solid #007bff; padding-bottom: 5px;">🏢 จัดการข้อมูลห้องเรียน</h2>
+    <form action="/add-room" method="POST">
+        <input type="text" name="room_id" placeholder="เลขห้อง (เช่น 632)" required>
+        <button type="submit" class="btn-save" style="background:#007bff;">➕ เพิ่มห้องเรียน</button>
+    </form>
+</div>
+
+<div class="manage-form-box" style="margin-top: 30px;">
+    <h2 style="border-bottom: 2px solid #ffc107; padding-bottom: 5px;">👥 จัดการข้อมูลกลุ่มเรียน</h2>
+    <form action="/admin/add-group" method="POST">
+        <input type="text" name="group_id" placeholder="ชื่อกลุ่มเรียน (เช่น ปวช. 1 IT - กลุ่ม 1)" required>
+        <button type="submit" class="btn-save" style="background:#ffc107; color: #333;">➕ เพิ่มกลุ่มเรียน</button>
+    </form>
+
+    <table style="margin-top: 15px; font-size: 13px;">
+        <thead>
+            <tr style="background: #fff9e6;">
+                <th>ชื่อกลุ่มเรียน</th>
+                <th>จัดการ</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (typeof groups !== 'undefined') { %>
+                <% groups.forEach(g => { %>
+                <tr>
+                    <td style="text-align: left;"><%= g.group_id %></td>
+                    <td>
+                        <a href="/admin/delete-group/<%= g.group_id %>" class="btn-del" onclick="return confirm('ลบกลุ่มเรียนนี้?')">ลบ</a>
+                    </td>
+                </tr>
+                <% }) %>
+            <% } %>
+        </tbody>
+    </table>
+</div>

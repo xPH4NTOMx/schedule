@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>จัดการข้อมูลหลัก - IT Lampang</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background: #f0f2f5; margin: 0; padding: 30px; }
+        .container { max-width: 1300px; margin: auto; }
+        
+        .header { 
+            display: flex; justify-content: space-between; align-items: center; 
+            background: #fff; padding: 25px 35px; border-radius: 16px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 30px; 
+        }
+
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 25px; margin-bottom: 25px; }
+        
+        .card { 
+            background: #fff; padding: 30px; border-radius: 16px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); height: fit-content; 
+            transition: transform 0.2s;
+        }
+
+        h3 { border-bottom: 3px solid #007bff; padding-bottom: 12px; color: #2d3436; margin-top: 0; display: flex; align-items: center; gap: 10px; font-size: 1.3rem; }
+        
+        input, select { 
+            width: 100%; padding: 12px 15px; margin: 8px 0; 
+            border: 1px solid #e0e0e0; border-radius: 10px; box-sizing: border-box; 
+            font-size: 14px; transition: 0.3s;
+        }
+
+        .search-box { border: 2px solid #e7f3ff; background: #f8fbff; margin-bottom: 15px; }
+        .search-box:focus { border-color: #007bff; background: #fff; outline: none; }
+
+        .btn { 
+            padding: 12px 20px; border-radius: 10px; border: none; font-weight: bold; 
+            cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+            transition: 0.3s; text-align: center; justify-content: center;
+        }
+        .btn-excel { background: #1d6f42; color: white; }
+        .btn-users { background: #6f42c1; color: white; }
+        .btn-back { background: #6c757d; color: white; }
+        .btn-add { background: #28a745; color: white; width: 100%; margin-top: 10px; font-size: 16px; }
+        .btn-import { background: #007bff; color: white; padding: 10px 25px; }
+        .btn-schedule { background: #ffc107; color: #333; width: 100%; margin-top: 10px; font-size: 16px; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 15px; background: white; }
+        th, td { padding: 12px; text-align: center; border-bottom: 1px solid #f1f1f1; }
+        th { background: #f8f9fa; color: #636e72; font-weight: 700; font-size: 13px; }
+        
+        .btn-del { color: #dc3545; text-decoration: none; font-weight: bold; }
+
+        .badge-total { font-weight: bold; color: #007bff; background: #e7f3ff; padding: 4px 10px; border-radius: 6px; }
+        
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 5px; }
+        .label-small { font-size: 12px; font-weight: bold; color: #636e72; display: block; text-align: center; }
+
+        .mini-table-container { max-height: 250px; overflow-y: auto; margin-top: 10px; border: 1px solid #eee; border-radius: 8px; }
+
+        /* Style เพิ่มเติมสำหรับส่วนเทอม */
+        .term-section { background-color: #fff5f8; border-radius: 15px; border: 1px solid #ffc1d6; padding: 25px; margin-bottom: 25px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div>
+            <h2 style="margin:0;">⚙️ ระบบจัดการข้อมูลหลัก</h2>
+            <p style="margin:5px 0 0 0; color:#636e72;">สิทธิ์การใช้งาน: <b style="color: #007bff;"><%= role %></b></p>
+        </div>
+        <div style="display:flex; gap:12px;">
+            <a href="/admin/export-excel" class="btn btn-excel"><i class="fas fa-file-excel"></i> Export Excel</a>
+            <% if (role === 'admin') { %>
+                <a href="/admin/users" class="btn btn-users"><i class="fas fa-users-cog"></i> จัดการผู้ใช้</a>
+            <% } %>
+            <a href="/dashboard" class="btn btn-back"><i class="fas fa-home"></i> หน้าหลัก</a>
+        </div>
+    </div>
+
+    <% if (role === 'admin' || role === 'scheduler') { %>
+    <div class="card term-section shadow-sm">
+        <h3 style="border-bottom: 3px solid #d63384; color: #d63384;">
+            <i class="fas fa-calendar-check"></i> ตั้งค่าภาคเรียนปัจจุบัน
+        </h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 15px;">
+            <div style="padding-right: 20px; border-right: 1px dashed #ffc1d6;">
+                <form action="/admin/set-current-term" method="POST">
+                    <label class="label-small" style="text-align: left; font-size: 14px; color: #d63384;">1. เลือกภาคเรียนปัจจุบันที่จะใช้เป็นค่าเริ่มต้น:</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select name="term" style="margin: 0; border: 1px solid #ffc1d6;">
+                            <% if (typeof allTerms !== 'undefined') { allTerms.forEach(t => { %>
+                                <option value="<%= t.term_name %>" <%= t.term_name === currentTerm ? 'selected' : '' %>>
+                                    <%= t.term_name %>
+                                </option>
+                            <% })} %>
+                        </select>
+                        <button type="submit" class="btn" style="background: #d63384; color: white; white-space: nowrap;">บันทึก</button>
+                    </div>
+                    <small class="text-muted" style="display: block; margin-top: 8px; color: #ad4e72;">* ภาคเรียนที่เลือกจะปรากฏให้ผู้ใช้ทั่วไปเห็นเป็นอันดับแรก</small>
+                </form>
+            </div>
+
+            <div>
+                <form action="/admin/add-term" method="POST">
+                    <label class="label-small" style="text-align: left; font-size: 14px; color: #28a745;">2. เพิ่มภาคเรียน/ปีการศึกษาใหม่:</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" name="newTerm" placeholder="เช่น 1/2569" required style="margin: 0; border: 1px solid #c3e6cb;">
+                        <button type="submit" class="btn" style="background: #28a745; color: white; white-space: nowrap;">
+                            <i class="fas fa-plus-circle"></i> เพิ่มเทอม
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <% } %>
+
+    <div class="card" style="background: #fffdf5; border: 2px solid #ffeeba; margin-bottom: 25px;">
+        <h3>📅 จัดตารางเรียนรายกลุ่ม</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 15px; align-items: end;">
+            <div>
+                <label style="font-size: 13px; font-weight: bold;">เลือกกลุ่มเรียน:</label>
+                <select id="selectGroup">
+                    <option value="">-- เลือกกลุ่ม --</option>
+                    <% if (typeof groups !== 'undefined') { groups.forEach(g => { %>
+                        <option value="<%= g.group_id %>"><%= g.group_id %></option>
+                    <% })} %>
+                </select>
+            </div>
+            <div>
+                <label style="font-size: 13px; font-weight: bold;">ภาคเรียนที่จัด:</label>
+                <select id="inputTerm">
+                    <% if (typeof allTerms !== 'undefined') { allTerms.forEach(t => { %>
+                        <option value="<%= t.term_name %>" <%= t.term_name === currentTerm ? 'selected' : '' %>><%= t.term_name %></option>
+                    <% })} %>
+                </select>
+            </div>
+            <button onclick="goToSchedule()" class="btn btn-schedule" style="height: 45px; margin-bottom: 8px;"><i class="fas fa-magic"></i> เริ่มจัดตาราง</button>
+        </div>
+    </div>
+
+    <div class="card-grid">
+        <div class="card">
+            <h3>📚 รายวิชาในระบบ</h3>
+            <% if (role === 'admin' || role === 'program_manager') { %>
+                <form action="/admin/add-subject" method="POST" style="margin-bottom: 15px;">
+                    <input type="text" name="subject_code" placeholder="รหัสวิชา (เช่น 30901-1001)" required>
+                    <input type="text" name="name_th" placeholder="ชื่อวิชาภาษาไทย" required>
+                    
+                    <div class="grid-3">
+                        <div>
+                            <span class="label-small">ทฤษฎี (ท)</span>
+                            <input type="number" name="theory_hrs" id="t_input" value="0" min="0" oninput="calculateTotal()">
+                        </div>
+                        <div>
+                            <span class="label-small">ปฏิบัติ (ป)</span>
+                            <input type="number" name="practice_hrs" id="p_input" value="0" min="0" oninput="calculateTotal()">
+                        </div>
+                        <div>
+                            <span class="label-small">หน่วยกิต (น)</span>
+                            <input type="number" name="credits" value="0" min="0">
+                        </div>
+                    </div>
+                    <p style="font-size: 13px; margin: 5px 0;">ชม.รวม: <b id="total_display" style="color:#007bff;">0</b> ชม./สัปดาห์</p>
+                    <button type="submit" class="btn btn-add"><i class="fas fa-plus-square"></i> เพิ่มวิชาเข้าสู่ระบบ</button>
+                </form>
+            <% } %>
+            
+            <input type="text" id="searchSub" class="search-box" onkeyup="filterTable('searchSub', 'miniSubjectTable')" placeholder="🔍 ค้นหารหัส/ชื่อวิชา...">
+            
+            <div class="mini-table-container">
+                <table id="miniSubjectTable">
+                    <thead>
+                        <tr><th>รหัส</th><th>ชื่อวิชา</th><th>ท-ป-น</th><th>จัดการ</th></tr>
+                    </thead>
+                    <tbody>
+                        <% subjects.forEach(s => { %>
+                            <tr>
+                                <td><b><%= s.subject_code %></b></td>
+                                <td style="text-align:left;"><%= s.name_th %></td>
+                                <td style="color:#666;"><%= s.theory_hrs %>-<%= s.practice_hrs %>-<%= s.credits %></td>
+                                <td>
+                                    <% if (role === 'admin' || role === 'program_manager') { %>
+                                        <a href="/admin/delete-subject/<%= s.subject_code %>" class="btn-del" onclick="return confirm('ยืนยันลบวิชา <%= s.name_th %>?')"><i class="fas fa-trash"></i></a>
+                                    <% } %>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🏢 ห้องเรียน</h3>
+            <% if (role === 'admin' || role === 'program_manager') { %>
+                <form action="/admin/add-room" method="POST">
+                    <input type="text" name="room_id" placeholder="รหัสห้อง (เช่น 632)" required>
+                    <button type="submit" class="btn btn-add" style="background:#007bff;"><i class="fas fa-plus-circle"></i> เพิ่มห้องเรียน</button>
+                </form>
+            <% } %>
+            <input type="text" id="searchRoom" class="search-box" onkeyup="filterTable('searchRoom', 'roomTable')" placeholder="🔍 ค้นหาห้องเรียน...">
+            <div class="mini-table-container">
+                <table id="roomTable">
+                    <thead><tr><th>รหัสห้อง</th><th>จัดการ</th></tr></thead>
+                    <tbody>
+                        <% if (typeof rooms !== 'undefined') { rooms.forEach(r => { %>
+                            <tr>
+                                <td><%= r.room_id %></td>
+                                <td><% if (role === 'admin' || role === 'program_manager') { %>
+                                    <a href="/admin/delete-room/<%= r.room_id %>" class="btn-del" onclick="return confirm('ลบห้อง?')"><i class="fas fa-trash"></i></a>
+                                <% } %></td>
+                            </tr>
+                        <% })} %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>👥 กลุ่มเรียน</h3>
+            <% if (role === 'admin' || role === 'program_manager') { %>
+                <form action="/admin/add-group" method="POST">
+                    <input type="text" name="group_id" placeholder="ชื่อกลุ่ม (เช่น ปวช. 1 IT-1)" required>
+                    <button type="submit" class="btn btn-add" style="background:#ffc107; color:#333;"><i class="fas fa-users"></i> เพิ่มกลุ่มเรียน</button>
+                </form>
+            <% } %>
+            <input type="text" id="searchGroup" class="search-box" onkeyup="filterTable('searchGroup', 'groupTable')" placeholder="🔍 ค้นหากลุ่มเรียน...">
+            <div class="mini-table-container">
+                <table id="groupTable">
+                    <thead><tr><th>ชื่อกลุ่ม</th><th>จัดการ</th></tr></thead>
+                    <tbody>
+                        <% if (typeof groups !== 'undefined') { groups.forEach(g => { %>
+                            <tr>
+                                <td><%= g.group_id %></td>
+                                <td><% if (role === 'admin' || role === 'program_manager') { %>
+                                    <a href="/admin/delete-group/<%= g.group_id %>" class="btn-del" onclick="return confirm('ลบกลุ่ม?')"><i class="fas fa-trash"></i></a>
+                                <% } %></td>
+                            </tr>
+                        <% })} %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="width: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="border:none; margin:0;"><i class="fas fa-list-alt"></i> ข้อมูลวิชาทั้งหมด (Full List)</h3>
+            <div style="display:flex; gap:10px;">
+                <input type="text" id="searchMain" class="search-box" onkeyup="filterTable('searchMain', 'mainTable')" placeholder="🔍 ค้นหาวิชาแบบเร็ว..." style="margin:0; width:250px;">
+                <form action="/admin/import-subjects" method="POST" enctype="multipart/form-data" style="display:flex; gap:5px;">
+                    <input type="file" name="excelFile" required style="width:auto; margin:0; font-size: 12px;">
+                    <button type="submit" class="btn btn-import" style="padding: 8px 15px;"><i class="fas fa-upload"></i> Import วิชา</button>
+                </form>
+            </div>
+        </div>
+        <div style="overflow-x: auto;">
+            <table id="mainTable">
+                <thead>
+                    <tr>
+                        <th>รหัสวิชา</th><th>ชื่อวิชา</th>
+                        <th>ท</th><th>ป</th><th>น</th><th>ชม.รวม</th><th>จัดการ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% subjects.forEach(s => { %>
+                    <tr>
+                        <td><b><%= s.subject_code %></b></td>
+                        <td style="text-align:left;"><%= s.name_th %></td>
+                        <td><%= s.theory_hrs %></td>
+                        <td><%= s.practice_hrs %></td>
+                        <td><%= s.credits %></td>
+                        <td><span class="badge-total"><%= (Number(s.theory_hrs)||0) + (Number(s.practice_hrs)||0) %></span></td>
+                        <td>
+                            <% if (role === 'admin' || role === 'program_manager') { %>
+                                <a href="/admin/delete-subject/<%= s.subject_code %>" class="btn-del" onclick="return confirm('ลบวิชา?')"><i class="fas fa-trash"></i></a>
+                            <% } %>
+                        </td>
+                    </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterTable(inputId, tableId) {
+    let input = document.getElementById(inputId);
+    let filter = input.value.toUpperCase();
+    let tr = document.getElementById(tableId).getElementsByTagName("tr");
+    for (let i = 1; i < tr.length; i++) {
+        tr[i].style.display = (tr[i].textContent.toUpperCase().indexOf(filter) > -1) ? "" : "none";
+    }
+}
+
+function calculateTotal() {
+    const t = parseInt(document.getElementById('t_input').value) || 0;
+    const p = parseInt(document.getElementById('p_input').value) || 0;
+    document.getElementById('total_display').innerText = t + p;
+}
+
+function goToSchedule() {
+    const group = document.getElementById('selectGroup').value;
+    const term = document.getElementById('inputTerm').value;
+    if(group && term) location.href = `/schedule/${group}?term=${encodeURIComponent(term)}`;
+    else alert('กรุณาเลือกกลุ่มเรียนและภาคเรียนก่อน');
+}
+</script>
+</body>
+</html>

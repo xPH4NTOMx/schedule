@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title><%= title %></title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; font-size: 14px; margin: 0; padding: 0; color: #000; background-color: #fff; }
+        .container { width: 100%; max-width: 1100px; margin: auto; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        th, td { border: 1px solid black; padding: 4px; text-align: center; }
+        th { background-color: #f2f2f2 !important; }
+        .summary-section { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+        .term-header { font-weight: bold; font-size: 16px; margin-top: 20px; }
+        .summary-table { font-size: 12px; width: 65%; margin-left: auto; }
+        .schedule-table { table-layout: fixed; width: 100%; }
+        .schedule-table th, .schedule-table td { font-size: 10px; height: 50px; }
+        .day-label { font-weight: bold; width: 70px; background-color: #f2f2f2 !important; }
+        .subject-info { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+        .sub-code { font-weight: bold; border-bottom: 0.5px solid #000; }
+        
+        .term-control-bar { 
+            background: #f8f9fa; 
+            padding: 15px 20px; 
+            border-bottom: 1px solid #ddd; 
+            display: flex; 
+            align-items: center; 
+            gap: 15px; 
+        }
+
+        @media print { 
+            @page { size: landscape; margin: 0.5cm; } 
+            .no-print { display: none !important; } 
+            body { padding: 0; }
+            .container { padding: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="no-print">
+    <div class="term-control-bar">
+        <label style="font-weight: bold;">เลือกภาคเรียน:</label>
+        <select onchange="changeTerm(this.value)" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer;">
+            <% allTerms.forEach(t => { %>
+                <option value="<%= t %>" <%= t === currentTerm ? 'selected' : '' %>><%= t %></option>
+            <% }) %>
+        </select>
+        <div style="margin-left: auto; display: flex; gap: 10px;">
+            <button onclick="window.print()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🖨️ พิมพ์ตาราง</button>
+            <button onclick="history.back()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">ย้อนกลับ</button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="summary-section">
+        <div class="term-header">
+            ภาคเรียนที่: <%= currentTerm %>
+        </div>
+
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th width="15%">รหัสวิชา</th>
+                    <th width="40%">ชื่อวิชา</th>
+                    <th width="5%">ท</th>
+                    <th width="5%">ป</th>
+                    <th width="5%">น</th>
+                    <th width="30%">ผู้สอน</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% 
+                   let sumT=0, sumP=0, sumN=0;
+                   let uniqueSubs = [];
+                   let seen = new Set();
+                   let allData = (typeof allSubjectsInPlan !== 'undefined' && allSubjectsInPlan.length > 0) ? allSubjectsInPlan : scheduleData;
+
+                   allData.forEach(item => {
+                       let s = item.Subject || item;
+                       if(s && s.subject_code && !seen.has(s.subject_code)) {
+                           seen.add(s.subject_code);
+                           uniqueSubs.push(item);
+                           sumT += (s.theory_hrs || 0);
+                           sumP += (s.practice_hrs || 0);
+                           sumN += (s.credits || 0);
+                       }
+                   });
+
+                   uniqueSubs.forEach(item => { 
+                       let s = item.Subject || item;
+                %>
+                    <tr>
+                        <td><%= s.subject_code %></td>
+                        <td style="text-align: left; padding-left: 5px;"><%= s.name_th %></td>
+                        <td><%= s.theory_hrs %></td>
+                        <td><%= s.practice_hrs %></td>
+                        <td><%= s.credits %></td>
+                        <td><%= item.Teacher ? item.Teacher.fullname : (item.instructor || '-') %></td>
+                    </tr>
+                <% }) %>
+                <tr style="font-weight: bold;">
+                    <td colspan="2">รวม</td>
+                    <td><%= sumT %></td>
+                    <td><%= sumP %></td>
+                    <td><%= sumN %></td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <table class="schedule-table">
+        <thead>
+            <tr>
+                <th rowspan="2" class="day-label">วัน / คาบ</th>
+                <% for(let i=1; i<=12; i++) { %> <th><%= i %></th> <% } %>
+            </tr>
+            <tr style="font-size: 9px;">
+                <% const times = ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"]; %>
+                <% times.forEach(t => { %> <td><%= t %></td> <% }) %>
+            </tr>
+        </thead>
+        <tbody>
+            <% 
+                const dayRows = [{ k: 'Monday', l: 'จันทร์' }, { k: 'Tuesday', l: 'อังคาร' }, { k: 'Wednesday', l: 'พุธ' }, { k: 'Thursday', l: 'พฤหัสบดี' }, { k: 'Friday', l: 'ศุกร์' }];
+                dayRows.forEach(row => { 
+            %>
+                <tr>
+                    <td class="day-label"><%= row.l %></td>
+                    <% for(let slot=1; slot<=12; slot++) { 
+                        let item = scheduleData.find(s => s.day === row.k && s.start_slot === slot);
+                        if (item) { 
+                            let colspan = (item.end_slot - item.start_slot) || 1;
+                    %>
+                        <td colspan="<%= colspan %>">
+                            <div class="subject-info">
+                                <% if(item.SubjectSubjectCode === 'BREAK' || !item.Subject) { %>
+                                    <strong>พัก</strong>
+                                <% } else { %>
+                                    <span class="sub-code"><%= item.Subject.subject_code %></span>
+                                    <div style="font-size: 8px;">
+                                        <%= (type === 'teacher') ? 'กลุ่ม: ' + item.studentGroupId : 'ครู: ' + (item.Teacher ? item.Teacher.fullname : '-') %><br>
+                                        ห้อง: <%= item.RoomId %>
+                                    </div>
+                                <% } %>
+                            </div>
+                        </td>
+                        <% slot += (colspan - 1); %>
+                    <% } else { %> <td></td> <% } } %>
+                </tr>
+            <% }) %>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    function changeTerm(term) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('term', term);
+        window.location.href = url.toString();
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ตารางเรียน - IT Lampang</title>
+    <style>
+        /* --- ส่วนการแสดงผลบนหน้าจอปกติ --- */
+        body { font-family: 'Sarabun', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 1400px; margin: auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        
+        .term-input-box { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 14px; }
+        .term-select-filter { padding: 4px 8px; border: 2px solid #007bff; border-radius: 4px; color: #007bff; font-weight: bold; background: #fff; cursor: pointer; outline: none; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+        label { display: block; font-size: 14px; margin-bottom: 5px; font-weight: bold; }
+        select, input[type="number"], input[type="text"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        
+        .btn-add { background: #28a745; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; align-self: end; }
+        .btn-print { background: #007bff; color: white; padding: 10px 20px; border-radius: 5px; border: none; font-weight: bold; cursor: pointer; text-decoration: none; }
+        .btn-back { background: #6c757d; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold; }
+        .btn-del-all { background: #dc3545; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold; }
+
+        .schedule-table { width: 100%; border-collapse: collapse; background: white; table-layout: fixed; }
+        .schedule-table th, .schedule-table td { border: 1px solid #dee2e6; padding: 4px; text-align: center; overflow: hidden; vertical-align: top; }
+        .schedule-table th { background: #007bff; color: white; font-size: 13px; }
+        .day-column { font-weight: bold; background: #f8f9fa; width: 80px; vertical-align: middle !important; }
+        
+        /* สไตล์ช่องวิชา */
+        .subject-slot { border-radius: 4px; padding: 4px; font-size: 10px; position: relative; height: 100%; min-height: 85px; display: flex; flex-direction: column; justify-content: flex-start; background: #e7f3ff; border: 1px solid #b3d7ff; word-wrap: break-word; }
+        
+        /* สไตล์ช่องพัก (ทำให้เรียบขึ้น) */
+        .break-slot { 
+            background: #fdfdfd !important; 
+            border: none !important; 
+            color: #888 !important; 
+            font-weight: normal; 
+            justify-content: center !important; 
+            align-items: center;
+            min-height: 85px;
+        }
+
+        .btn-del { color: #dc3545; text-decoration: none; font-size: 9px; font-weight: bold; display: block; margin-top: auto; padding-top: 4px; border-top: 1px solid rgba(220, 53, 69, 0.2); }
+
+        /* --- ส่วนการปริ้น --- */
+        .print-only { display: none; }
+
+        @media print {
+            @page { size: A4 landscape; margin: 1cm; }
+            body { background: white; padding: 0; margin: 0; color: black; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .print-header-layout { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+            .group-info { width: 35%; font-size: 16px; font-weight: bold; line-height: 1.6; }
+            .summary-table { width: 60%; border-collapse: collapse; }
+            .summary-table th, .summary-table td { border: 1px solid black !important; padding: 4px; font-size: 11px; text-align: center; }
+            .summary-table th { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; }
+            
+            .schedule-table { border: 1.5px solid black !important; }
+            .schedule-table th, .schedule-table td { border: 1px solid black !important; color: black !important; }
+            .schedule-table th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; font-size: 11px; height: 40px; }
+            .day-column { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; width: 60px !important; }
+            
+            .subject-slot { background: none !important; border: none !important; color: black !important; padding: 0; min-height: auto; }
+            .subject-slot strong { font-size: 11px; display: block; }
+            .subject-slot span { font-size: 9px; display: block; line-height: 1; }
+            .print-details { display: block !important; font-size: 8px; margin-top: 2px; border-top: 0.5px solid #000; padding-top: 2px; }
+            
+            /* เวลาพักตอนปริ้นให้ดูสะอาดๆ */
+            .break-slot { background: #fafafa !important; -webkit-print-color-adjust: exact; border: none !important; }
+            .break-slot span { font-size: 12px !important; color: #999 !important; }
+        }
+        .print-details { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header no-print">
+        <div>
+            <h2 style="margin:0;">📅 ตารางเรียนแผนก IT</h2>
+            <div class="term-input-box">
+                <span>กลุ่มเรียน: <strong><%= groupId %></strong></span>
+                <span style="color: #ccc;">|</span>
+                <label>เลือกภาคเรียน:</label>
+                <select class="term-select-filter" onchange="location.href='/schedule/<%= groupId %>?term=' + encodeURIComponent(this.value)">
+                    <% 
+                        let termList = allTerms.map(t => (typeof t === 'object' && t !== null) ? (t.term_name || t.term) : t);
+                        termList = [...new Set(termList.filter(t => t))];
+                        termList.sort((a, b) => {
+                            const [tA, yA] = a.split('/');
+                            const [tB, yB] = b.split('/');
+                            if (yB !== yA) return yB.localeCompare(yA);
+                            return tB.localeCompare(tA);
+                        });
+                        termList.forEach(termVal => { 
+                    %>
+                        <option value="<%= termVal %>" <%= termVal === currentTerm ? 'selected' : '' %>>
+                            <%= termVal %>
+                        </option>
+                    <% }) %>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <button onclick="window.print()" class="btn-print">🖨️ ปริ้นตารางเรียน</button>
+            <a href="/clear-schedule/<%= groupId %>?term=<%= currentTerm %>" class="btn-del-all" onclick="return confirm('⚠️ ยืนยันการล้างตาราง?')">🗑️ ล้างตาราง</a>
+            <a href="/dashboard" class="btn-back" style="background:#444;">🏠 หน้าหลัก</a>
+        </div>
+    </div>
+
+    <div class="print-only">
+        <div class="print-header-layout">
+            <div class="group-info">
+                วิทยาลัยเทคนิคลาปาง <br>
+                กลุ่มเรียน: <%= groupId %> <br>
+                ภาคเรียนที่: <%= currentTerm %>
+            </div>
+            
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">รหัสวิชา</th>
+                        <th style="width: 45%;">ชื่อวิชา</th>
+                        <th style="width: 15%;">ท-ป-น</th>
+                        <th style="width: 25%;">ผู้สอน</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% 
+                        let uniqueSubs = [];
+                        scheduleData.forEach(item => {
+                            if(item.Subject && item.Subject.subject_code !== 'BREAK' && !uniqueSubs.find(x => x.subject_code === item.Subject.subject_code)) {
+                                uniqueSubs.push({
+                                    subject: item.Subject,
+                                    teacher: item.Teacher ? item.Teacher.fullname : '-'
+                                });
+                            }
+                        });
+                        uniqueSubs.forEach(data => { 
+                    %>
+                    <tr>
+                        <td><%= data.subject.subject_code %></td>
+                        <td style="text-align: left; padding-left: 5px;"><%= data.subject.name_th %></td>
+                        <td><%= data.subject.theory_hrs %>-<%= data.subject.practice_hrs %>-<%= data.subject.credits %></td>
+                        <td><%= data.teacher %></td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <% if (role === 'admin' || role === 'scheduler') { %>
+    <div class="card no-print">
+        <h3 style="margin-top:0;">➕ เพิ่มคาบเรียน / แทรกเวลาพัก</h3>
+        <form action="/add-schedule" method="POST" class="form-grid">
+            <input type="hidden" name="studentGroupId" value="<%= groupId %>">
+            <input type="hidden" name="term" value="<%= currentTerm %>">
+            <div>
+                <label>วันเรียน</label>
+                <select name="day" required>
+                    <option value="Monday">วันจันทร์</option>
+                    <option value="Tuesday">วันอังคาร</option>
+                    <option value="Wednesday">วันพุธ</option>
+                    <option value="Thursday">วันพฤหัสบดี</option>
+                    <option value="Friday">วันศุกร์</option>
+                </select>
+            </div>
+            <div>
+                <label>เลือกวิชา</label>
+                <select name="subjectCode" id="subjectSelect" required onchange="handleSubjectChange()">
+                    <option value="" disabled selected>--- เลือกรายการ ---</option>
+                    <option value="BREAK" data-hrs="1">☕ [แทรกเวลาพักกลางวัน]</option>
+                    <% subjects.forEach(s => { 
+                        let total = (s.theory_hrs || 0) + (s.practice_hrs || 0);
+                    %>
+                        <option value="<%= s.subject_code %>" data-hrs="<%= total %>">
+                            <%= s.subject_code %> <%= s.name_th %> (<%= total %> ชม.)
+                        </option>
+                    <% }) %>
+                </select>
+            </div>
+            <div id="teacherField">
+                <label>ผู้สอน</label>
+                <select name="teacherId" required>
+                    <% teachers.forEach(t => { %>
+                        <option value="<%= t.id %>"><%= t.fullname %></option>
+                    <% }) %>
+                </select>
+            </div>
+            <div id="roomField">
+                <label>ห้องเรียน</label>
+                <select name="roomId" required>
+                    <% rooms.forEach(r => { %>
+                        <option value="<%= r.room_id %>">ห้อง <%= r.room_id %></option>
+                    <% }) %>
+                </select>
+            </div>
+            <div>
+                <label>เริ่มคาบที่</label>
+                <input type="number" name="start_slot" id="startSlotInput" min="1" max="12" required oninput="updateHint()">
+                <small id="durationHint" style="color: #007bff; font-size: 11px;"></small>
+            </div>
+            <button type="submit" class="btn-add">📌 บันทึก</button>
+        </form>
+    </div>
+    <% } %>
+
+    <div class="card" style="padding: 10px; border: none; box-shadow: none;">
+        <table class="schedule-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">วัน / คาบ</th>
+                    <% const timeLabels = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
+                       for(let i=1; i<=12; i++) { %>
+                        <th><%= i %><br><small style="font-weight: normal; font-size: 10px;"><%= timeLabels[i-1] %></small></th>
+                    <% } %>
+                </tr>
+            </thead>
+            <tbody>
+                <% 
+                const daysThai = { 'Monday': 'จันทร์', 'Tuesday': 'อังคาร', 'Wednesday': 'พุธ', 'Thursday': 'พฤหัสบดี', 'Friday': 'ศุกร์' };
+                const dayKeys = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+                dayKeys.forEach(day => { %>
+                    <tr>
+                        <td class="day-column"><%= daysThai[day] %></td>
+                        <% for(let slot=1; slot<=12; slot++) { 
+                            const item = scheduleData.find(d => d.day === day && slot >= d.start_slot && slot < d.end_slot);
+                            
+                            if (item) {
+                                const isBreak = (item.SubjectSubjectCode === 'BREAK' || !item.Subject);
+                                let colSpan = 1;
+
+                                if (isBreak) {
+                                    // รวมช่องเวลาพักยาวๆ ไปเลย
+                                    colSpan = (item.end_slot - item.start_slot);
+                                } else {
+                                    // Logic รวมช่อง ท. หรือ ป.
+                                    let theoryLimit = item.Subject ? item.Subject.theory_hrs : 0;
+                                    let currentPosInSubject = (slot - item.start_slot) + 1;
+                                    let currentType = (currentPosInSubject <= theoryLimit) ? 'ท.' : 'ป.';
+
+                                    for (let next = slot + 1; next < item.end_slot; next++) {
+                                        let nextPosInSubject = (next - item.start_slot) + 1;
+                                        let nextType = (nextPosInSubject <= theoryLimit) ? 'ท.' : 'ป.';
+                                        if (nextType === currentType) {
+                                            colSpan++;
+                                        } else {
+                                            break; 
+                                        }
+                                    }
+                                }
+                        %>
+                                <td colspan="<%= colSpan %>" style="<%= isBreak ? 'border-left: none; border-right: none;' : '' %>">
+                                    <% if (isBreak) { %>
+                                        <div class="subject-slot break-slot">
+                                            <span>พัก</span>
+                                            <% if (role === 'admin' || role === 'scheduler') { %>
+                                                <a href="/delete-schedule/<%= item.id %>/<%= groupId %>" class="btn-del no-print" style="border:none; margin:0;">(ลบ)</a>
+                                            <% } %>
+                                        </div>
+                                    <% } else { 
+                                        let theoryLimit = item.Subject ? item.Subject.theory_hrs : 0;
+                                        let currentPosInSubject = (slot - item.start_slot) + 1;
+                                        let currentType = (currentPosInSubject <= theoryLimit) ? 'ท.' : 'ป.';
+                                    %>
+                                        <div class="subject-slot">
+                                            <strong><%= currentType %><%= item.Subject ? item.Subject.subject_code : '???' %></strong>
+                                            <span class="no-print" style="line-height: 1.1;"><%= item.Subject ? item.Subject.name_th : '' %></span>
+                                            
+                                            <div class="no-print" style="margin-top: 4px; font-size: 9px; color: #555;">
+                                                📍 <%= item.RoomId %> | 👨‍🏫 <%= item.Teacher ? item.Teacher.fullname.split(' ')[0] : '-' %>
+                                            </div>
+
+                                            <div class="print-details">
+                                                ห้อง: <%= item.RoomId %> <br>
+                                                ครู: <%= item.Teacher ? item.Teacher.fullname.split(' ')[0] : '-' %>
+                                            </div>
+                                            
+                                            <% if (role === 'admin' || role === 'scheduler') { %>
+                                                <a href="/delete-schedule/<%= item.id %>/<%= groupId %>" class="btn-del no-print" onclick="return confirm('ลบรายการนี้?')">ลบ</a>
+                                            <% } %>
+                                        </div>
+                                    <% } %>
+                                </td>
+                        <% 
+                                slot += (colSpan - 1); 
+                            } else { %>
+                                <td></td>
+                            <% } 
+                        } %>
+                    </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const subSel = document.getElementById('subjectSelect');
+    const startInp = document.getElementById('startSlotInput');
+    const hint = document.getElementById('durationHint');
+    const teacherField = document.getElementById('teacherField');
+    const roomField = document.getElementById('roomField');
+
+    function handleSubjectChange() {
+        if (!subSel) return;
+        if (subSel.value === "BREAK") {
+            startInp.value = 5; 
+            teacherField.style.opacity = "0.3"; roomField.style.opacity = "0.3";
+            teacherField.style.pointerEvents = "none"; roomField.style.pointerEvents = "none";
+        } else {
+            teacherField.style.opacity = "1"; roomField.style.opacity = "1";
+            teacherField.style.pointerEvents = "auto"; roomField.style.pointerEvents = "auto";
+        }
+        updateHint();
+    }
+
+    function updateHint() {
+        if (!subSel || !startInp) return;
+        const opt = subSel.options[subSel.selectedIndex];
+        if(!opt || opt.value === "") { hint.innerText = ""; return; }
+        const hrs = parseInt(opt.getAttribute('data-hrs')) || 1;
+        const start = parseInt(startInp.value);
+        if (start) {
+            const end = start + hrs - 1;
+            hint.innerText = `ใช้เวลา ${hrs} คาบ (เริ่ม ${start} - จบคาบ ${end})`;
+        }
+    }
+</script>
+</body>
+</html>
