@@ -507,52 +507,42 @@ app.get('/group/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 
 // เพิ่ม program_manager ให้เข้าถึงได้ตามที่พี่ต้องการ
 app.get('/admin/export-excel', checkRole(['admin', 'scheduler', 'program_manager']), async (req, res) => {
     try {
-        const schedules = await Schedule.findAll({
-            include: [
-                { model: Subject },
-                { model: User, as: 'Teacher' }, // ต้องมี as: 'Teacher' ตามที่ตั้งใน model
-                { model: Room }
-            ]
+        // เปลี่ยนมาดึงข้อมูลจากตาราง Subject (วิชาที่พี่ Add เข้าไป)
+        const subjects = await Subject.findAll({
+            order: [['subject_code', 'ASC']]
         });
 
-        if (!schedules || schedules.length === 0) {
-            return res.send("<script>alert('❌ ไม่พบข้อมูลตารางเรียน'); window.location='/admin/manage';</script>");
+        if (!subjects || subjects.length === 0) {
+            return res.send("<script>alert('❌ ไม่พบข้อมูลรายวิชาในระบบ'); window.location='/admin/manage';</script>");
         }
 
-        const data = schedules.map(s => {
-            const raw = s.get({ plain: true });
-            
-            // ตรวจสอบว่าเป็นเวลาพักหรือไม่ (อ้างอิงจาก SubjectSubjectCode ใน model ของคุณ)
-            const isBreak = raw.SubjectSubjectCode === 'BREAK';
-
+        // แปลงข้อมูลวิชาเป็นรูปแบบตาราง Excel
+        const data = subjects.map(s => {
+            const item = s.get({ plain: true });
             return {
-                'ภาคเรียน': raw.term || '-',
-                'กลุ่มเรียน': raw.studentGroupId || '-',
-                'วัน': raw.day || '-',
-                'คาบเริ่ม': raw.start_slot || 0,
-                'คาบสิ้นสุด': raw.end_slot || 0,
-                // แก้จุดนี้: ดึงจากรหัสวิชาตรงๆ
-                'รหัสวิชา': isBreak ? '-' : (raw.SubjectSubjectCode || '-'),
-                // แก้จุดนี้: ดึงชื่อวิชาผ่าน Object Subject ที่ Include มา
-                'ชื่อวิชา': isBreak ? 'พัก' : (raw.Subject ? raw.Subject.name_th : '-'),
-                // แก้จุดนี้: ดึงชื่อผู้สอนผ่าน Object Teacher (ตามที่ตั้ง as: 'Teacher')
-                'ผู้สอน': raw.Teacher ? raw.Teacher.fullname : '-',
-                'ห้อง': raw.RoomId || '-'
+                'รหัสวิชา': item.subject_code,
+                'ชื่อวิชา (ภาษาไทย)': item.name_th,
+                'ทฤษฎี (ชม.)': item.theory_hrs || 0,
+                'ปฏิบัติ (ชม.)': item.practice_hrs || 0,
+                'หน่วยกิต': item.credits || 0
             };
         });
 
+        // --- ส่วนการสร้างไฟล์ Excel ---
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Schedules");
+        XLSX.utils.book_append_sheet(workbook, worksheet, "รายวิชาทั้งหมด");
 
+        // สร้าง Buffer และส่งไฟล์
         const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        res.setHeader('Content-Disposition', 'attachment; filename=schedule_export.xlsx');
+        
+        res.setHeader('Content-Disposition', 'attachment; filename=subjects_list.xlsx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 
     } catch (err) {
         console.error("Export Error:", err);
-        res.status(500).send("Error: " + err.message);
+        res.status(500).send("❌ ไม่สามารถส่งออกข้อมูลรายวิชาได้: " + err.message);
     }
 });
 
