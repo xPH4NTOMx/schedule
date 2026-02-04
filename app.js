@@ -503,6 +503,41 @@ app.get('/group/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 
     } catch (err) { res.status(500).send(err.message); }
 });
 
+// --- [เพิ่มส่วนนี้] 6.5 Export Excel ---
+app.get('/admin/export-excel', checkRole(['admin', 'scheduler']), async (req, res) => {
+    try {
+        const schedules = await Schedule.findAll({
+            include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
+        });
+
+        // แปลงข้อมูลเป็นรูปแบบตารางสำหรับ Excel
+        const data = schedules.map(s => ({
+            'ภาคเรียน': s.term,
+            'กลุ่มเรียน': s.studentGroupId,
+            'วัน': s.day,
+            'คาบเริ่ม': s.start_slot,
+            'คาบสิ้นสุด': s.end_slot,
+            'รหัสวิชา': s.SubjectSubjectCode,
+            'ชื่อวิชา': s.Subject ? s.Subject.name_th : '-',
+            'ผู้สอน': s.Teacher ? s.Teacher.fullname : '-',
+            'ห้อง': s.RoomId
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Schedules");
+
+        // สร้าง Buffer และส่งไฟล์ให้ Browser ดาวน์โหลด
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Disposition', 'attachment; filename=schedule_export.xlsx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+
+    } catch (err) {
+        res.status(500).send("❌ ไม่สามารถส่งออกข้อมูลได้: " + err.message);
+    }
+});
+
 // --- 7. Server Start ---
 sequelize.sync({ alter: true }).then(async () => {
     const adminExists = await User.findOne({ where: { username: 'admin' } });
