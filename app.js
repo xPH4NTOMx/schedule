@@ -510,14 +510,20 @@ app.get('/admin/export-excel', checkRole(['admin', 'scheduler', 'program_manager
         const schedules = await Schedule.findAll({
             include: [
                 { model: Subject },
-                { model: User, as: 'Teacher' },
+                { model: User, as: 'Teacher' }, // ต้องมี as: 'Teacher' ตามที่ตั้งใน model
                 { model: Room }
             ]
         });
 
+        if (!schedules || schedules.length === 0) {
+            return res.send("<script>alert('❌ ไม่พบข้อมูลตารางเรียน'); window.location='/admin/manage';</script>");
+        }
+
         const data = schedules.map(s => {
-            // ดึงข้อมูลออกมาเป็น Object ธรรมดา
             const raw = s.get({ plain: true });
+            
+            // ตรวจสอบว่าเป็นเวลาพักหรือไม่ (อ้างอิงจาก SubjectSubjectCode ใน model ของคุณ)
+            const isBreak = raw.SubjectSubjectCode === 'BREAK';
 
             return {
                 'ภาคเรียน': raw.term || '-',
@@ -525,27 +531,28 @@ app.get('/admin/export-excel', checkRole(['admin', 'scheduler', 'program_manager
                 'วัน': raw.day || '-',
                 'คาบเริ่ม': raw.start_slot || 0,
                 'คาบสิ้นสุด': raw.end_slot || 0,
-                // จุดที่แก้: ใช้ชื่อตาม Model ที่พี่ตั้งไว้
-                'รหัสวิชา': raw.SubjectSubjectCode || (raw.Subject ? raw.Subject.subject_code : '-'),
-                'ชื่อวิชา': raw.Subject ? raw.Subject.name_th : (raw.SubjectSubjectCode === 'BREAK' ? 'พัก' : '-'),
+                // แก้จุดนี้: ดึงจากรหัสวิชาตรงๆ
+                'รหัสวิชา': isBreak ? '-' : (raw.SubjectSubjectCode || '-'),
+                // แก้จุดนี้: ดึงชื่อวิชาผ่าน Object Subject ที่ Include มา
+                'ชื่อวิชา': isBreak ? 'พัก' : (raw.Subject ? raw.Subject.name_th : '-'),
+                // แก้จุดนี้: ดึงชื่อผู้สอนผ่าน Object Teacher (ตามที่ตั้ง as: 'Teacher')
                 'ผู้สอน': raw.Teacher ? raw.Teacher.fullname : '-',
                 'ห้อง': raw.RoomId || '-'
             };
         });
 
-        // --- ส่วนสร้าง Excel (เหมือนเดิม) ---
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Schedules");
+
         const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        
         res.setHeader('Content-Disposition', 'attachment; filename=schedule_export.xlsx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 
     } catch (err) {
         console.error("Export Error:", err);
-        res.status(500).send("❌ ไม่สามารถส่งออกข้อมูลได้: " + err.message);
+        res.status(500).send("Error: " + err.message);
     }
 });
 
