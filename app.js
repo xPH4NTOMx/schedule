@@ -4,14 +4,16 @@ const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const XLSX = require('xlsx'); 
 const multer = require('multer');
-const upload = multer({ dest: 'uploads/' }); 
-// เพิ่ม Term เข้ามาในบรรทัดดึง Model
+
+// ใช้ memoryStorage เพื่อความเร็วและลดปัญหาสิทธิ์ในการเขียนไฟล์บน Server
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
 const { sequelize, User, Schedule, Subject, Room, Group, Term } = require('./models');
 
 const app = express();
 
 // --- [ตัวแปรระบบ] ---
-// globalSettings ยังคงไว้สำหรับจำค่า session ปัจจุบัน แต่ข้อมูลเทอมจะดึงจาก DB แทน
 let globalSettings = { currentTerm: "2/2568" }; 
 
 // --- 1. Settings & Middleware ---
@@ -71,21 +73,17 @@ app.get('/dashboard', (req, res) => {
 // --- 3. Manage Page (Master Data) ---
 app.get('/admin/manage', checkRole(['admin', 'program_manager', 'scheduler']), async (req, res) => {
     try {
-        const subjects = await Subject.findAll();
+        const subjects = await Subject.findAll({ order: [['subject_code', 'ASC']] });
         const rooms = await Room.findAll();
         const teachers = await User.findAll({ where: { role: 'teacher' } });
         const groups = await Group.findAll();
-        
-        // แก้ไข: ดึงข้อมูลเทอมจาก Database และเรียงลำดับจากใหม่ไปเก่า
-        const allTerms = await Term.findAll({
-            order: [['term_name', 'DESC']]
-        });
+        const allTerms = await Term.findAll({ order: [['term_name', 'DESC']] });
 
         res.render('manage', { 
             subjects, rooms, teachers, groups, 
             role: req.session.role,
             currentTerm: globalSettings.currentTerm, 
-            allTerms: allTerms // ส่งค่าที่ดึงจาก DB ไป
+            allTerms: allTerms
         });
     } catch (err) { res.status(500).send(err.message); }
 });
@@ -97,15 +95,11 @@ app.post('/admin/set-current-term', checkRole(['admin', 'scheduler']), (req, res
     res.send("<script>alert('✅ ตั้งค่าภาคเรียนปัจจุบันสำเร็จ'); window.location='/admin/manage';</script>");
 });
 
-// แก้ไข: บันทึกเทอมใหม่ลงใน Database แทนตัวแปรชั่วคราว
 app.post('/admin/add-term', checkRole(['admin', 'scheduler']), async (req, res) => {
     try {
         const { newTerm } = req.body;
         if (newTerm) {
-            // ใช้ findOrCreate เพื่อป้องกันข้อมูลซ้ำ
-            await Term.findOrCreate({
-                where: { term_name: newTerm.trim() }
-            });
+            await Term.findOrCreate({ where: { term_name: newTerm.trim() } });
         }
         res.redirect('/admin/manage');
     } catch (err) { res.status(500).send(err.message); }
@@ -160,22 +154,68 @@ app.get('/admin/delete-group/:id', checkRole(['admin', 'program_manager']), asyn
     } catch (err) { res.status(500).send(err.message); }
 });
 
-app.post('/admin/import-subjects', checkRole(['admin', 'program_manager']), upload.single('excelFile'), async (req, res) => {
+// ---------------------------------------------------------------------------
+// นำเข้าข้อมูลรายวิชาจาก Excel
+// ---------------------------------------------------------------------------
+app.post('/admin/import-subjects', checkRole(['admin', 'scheduler', 'program_manager']), upload.single('file'), async (req, res) => {
     try {
-        if (!req.file) return res.send("<script>alert('❌ กรุณาเลือกไฟล์'); history.back();</script>");
-        const workbook = XLSX.readFile(req.file.path);
-        const data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-        for (let row of data) {
-            await Subject.upsert({
-                subject_code: String(row['subject_code'] || row['รหัสวิชา'] || '').trim(),
-                name_th: row['name_th'] || row['ชื่อวิชา'],
-                theory_hrs: Number(row['theory_hrs'] || row['ท']) || 0,
-                practice_hrs: Number(row['practice_hrs'] || row['ป']) || 0,
-                credits: Number(row['credits'] || row['น']) || 0
+        if (!req.file) return res.status(400).send('❌ กรุณาเลือกไฟล์ Excel');
+
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        if (jsonData.length === 0) return res.send("<script>alert('❌ ไฟล์ไม่มีข้อมูล'); history.back();</script>");
+
+        const importPromises = jsonData.map(item => {
+            const code = (item['รหัสวิชา'] || item['subject_code'])?.toString().trim();
+            if (!code) return null;
+
+            return Subject.upsert({
+                subject_code: code,
+                name_th: (item['ชื่อวิชา (ภาษาไทย)'] || item['ชื่อวิชา'] || item['name_th'] || 'ไม่ระบุชื่อวิชา').toString().trim(),
+                theory_hrs: parseInt(item['ทฤษฎี'] || item['ทฤษฎี (ชม.)'] || item['theory_hrs'] || 0),
+                practice_hrs: parseInt(item['ปฏิบัติ'] || item['ปฏิบัติ (ชม.)'] || item['practice_hrs'] || 0),
+                credits: parseInt(item['หน่วยกิต'] || item['credits'] || 0)
             });
+        });
+
+        await Promise.all(importPromises.filter(p => p !== null));
+        res.send("<script>alert('✅ นำเข้าข้อมูลวิชาเรียบร้อยแล้ว'); window.location='/admin/manage';</script>");
+    } catch (err) {
+        console.error("Import Error:", err);
+        res.status(500).send("❌ เกิดข้อผิดพลาดในการนำเข้า: " + err.message);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// ส่งออกข้อมูลรายวิชาเป็น Excel
+// ---------------------------------------------------------------------------
+app.get('/admin/export-excel', checkRole(['admin', 'scheduler', 'program_manager']), async (req, res) => {
+    try {
+        const subjects = await Subject.findAll({ order: [['subject_code', 'ASC']] });
+        if (!subjects || subjects.length === 0) {
+            return res.send("<script>alert('❌ ไม่พบข้อมูลรายวิชาในระบบ'); window.location='/admin/manage';</script>");
         }
-        res.send("<script>alert('✅ นำเข้าข้อมูลรายวิชาสำเร็จ!'); window.location='/admin/manage';</script>");
-    } catch (error) { res.status(500).send("❌ การ Import ล้มเหลว: " + error.message); }
+
+        const data = subjects.map(s => ({
+            'รหัสวิชา': s.subject_code,
+            'ชื่อวิชา (ภาษาไทย)': s.name_th,
+            'ทฤษฎี (ชม.)': s.theory_hrs || 0,
+            'ปฏิบัติ (ชม.)': s.practice_hrs || 0,
+            'หน่วยกิต': s.credits || 0
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "รายวิชาทั้งหมด");
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Disposition', 'attachment; filename=subjects_list.xlsx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (err) { res.status(500).send("❌ Export Error: " + err.message); }
 });
 
 // --- 4. Scheduling (หน้าจัดตาราง) ---
@@ -183,28 +223,20 @@ app.get('/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 'stude
     try {
         const { groupId } = req.params;
         const term = req.query.term || globalSettings.currentTerm;
-
         const scheduleData = await Schedule.findAll({
             where: { studentGroupId: groupId, term: term },
             include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
         });
-        
-        const canEdit = ['admin', 'scheduler'].includes(req.session.role);
-        
-        // แก้ไข: ดึงข้อมูลเทอมจาก Database สำหรับหน้าตารางเรียน
         const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
 
         res.render('schedule', { 
-            scheduleData, 
-            groupId, 
-            role: req.session.role, 
-            canEdit,
-            currentTerm: term, 
-            latestTerm: globalSettings.currentTerm,
-            allTerms: allTermsFromDB, // ส่งค่าจาก DB
-            subjects: canEdit ? await Subject.findAll() : [], 
-            teachers: canEdit ? await User.findAll({ where: { role: 'teacher' } }) : [], 
-            rooms: canEdit ? await Room.findAll() : []
+            scheduleData, groupId, role: req.session.role, 
+            canEdit: ['admin', 'scheduler'].includes(req.session.role),
+            currentTerm: term, latestTerm: globalSettings.currentTerm,
+            allTerms: allTermsFromDB,
+            subjects: await Subject.findAll(),
+            teachers: await User.findAll({ where: { role: 'teacher' } }),
+            rooms: await Room.findAll()
         });
     } catch (err) { res.status(500).send(err.message); }
 });
@@ -303,160 +335,45 @@ app.post('/admin/edit-user', checkRole(['admin']), async (req, res) => {
     } catch (err) { res.status(500).send(err.message); }
 });
 
-// --- 6. View Schedules ---
+// --- 6. View Schedules (Teacher/Room/Group) ---
 app.get('/teacher/schedule', checkRole(['admin', 'teacher']), async (req, res) => {
     try {
         const teacherId = (req.session.role === 'teacher') ? req.session.userId : req.query.teacherId;
         const term = req.query.term || globalSettings.currentTerm;
+        const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
+        const termList = allTermsFromDB.map(t => t.term_name);
 
         if (!teacherId) {
             const teachers = await User.findAll({ where: { role: 'teacher' } });
-            return res.render('teacher_select', { teachers, role: req.session.role });
+            return res.render('teacher_select', { teachers, role: req.session.role, allTerms: termList, currentTerm: term });
         }
         const scheduleData = await Schedule.findAll({
             where: { teacherId, term },
             include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
         });
         const teacherInfo = await User.findByPk(teacherId);
-        
-        // เพิ่ม: ดึงรายการเทอมทั้งหมดส่งไปให้ Dropdown
-        const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
-        const termList = allTermsFromDB.map(t => t.term_name);
 
         res.render('schedule_view', { 
             scheduleData, title: `ตารางสอน: ${teacherInfo.fullname}`,
             role: req.session.role, type: 'teacher', currentTerm: term,
-            teacherId: teacherId, // ส่งไปแก้ ReferenceError
-            allTerms: termList     // ส่งรายการเทอมไปวน Loop
-        });
-    } catch (err) { res.status(500).send(err.message); }
-});
-
-app.get('/room/schedule', checkRole(['admin', 'scheduler', 'teacher', 'student']), async (req, res) => {
-    try {
-        const { roomId } = req.query;
-        const term = req.query.term || globalSettings.currentTerm;
-
-        if (!roomId) {
-            const rooms = await Room.findAll();
-            const groups = await Group.findAll(); 
-            return res.render('room_select', { rooms, groups, role: req.session.role });
-        }
-        const scheduleData = await Schedule.findAll({
-            where: { RoomId: roomId, term },
-            include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
-        });
-
-        const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
-        const termList = allTermsFromDB.map(t => t.term_name);
-
-        res.render('schedule_view', { 
-            scheduleData, title: `ตารางการใช้ห้อง: ${roomId}`,
-            role: req.session.role, type: 'room', currentTerm: term,
-            allTerms: termList,
-            teacherId: null // ใส่ไว้กันพังในกรณีใช้ไฟล์ View ร่วมกัน
-        });
-    } catch (err) { res.status(500).send(err.message); }
-});
-
-// --- 6. View Schedules (ส่วนที่เพิ่มใหม่) ---
-
-// เพิ่ม Route สำหรับดูตารางเรียนรายกลุ่ม (สำหรับพิมพ์)
-app.get('/group/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 'student']), async (req, res) => {
-    try {
-        const { groupId } = req.params;
-        const term = req.query.term || globalSettings.currentTerm;
-
-        // 1. ดึงข้อมูลตาราง
-        const scheduleData = await Schedule.findAll({
-            where: { studentGroupId: groupId, term: term },
-            include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
-        });
-
-        // 2. ดึงข้อมูลกลุ่ม (เพิ่มข้อมูลเพื่อไปโชว์หัวกระดาษ)
-        const groupInfo = await Group.findByPk(groupId) || { 
-            group_name: groupId, 
-            level: 'ไม่ระบุ', 
-            group_no: '-', 
-            major_name: 'ไม่ระบุ' 
-        };
-
-        const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
-
-        res.render('schedule_view', { 
-            scheduleData, 
-            title: `ตารางเรียนกลุ่ม: ${groupId}`,
-            role: req.session.role, 
-            type: 'group', 
-            currentTerm: term,
-            allTerms: allTermsFromDB.map(t => t.term_name),
-            teacherId: null,
-            groupInfo: groupInfo, // ส่งไปแก้ ReferenceError
-            allSubjectsInPlan: []  // ส่งไปกันพัง
-        });
-    } catch (err) { res.status(500).send(err.message); }
-});
-// --- 6. View Schedules (ฉบับสมบูรณ์สำหรับ EJS ของพี่) ---
-
-// 1. ตารางสอนของครู
-app.get('/teacher/schedule', checkRole(['admin', 'teacher']), async (req, res) => {
-    try {
-        const teacherId = (req.session.role === 'teacher') ? req.session.userId : req.query.teacherId;
-        const term = req.query.term || globalSettings.currentTerm;
-
-        // ดึงรายการเทอมสำหรับ Dropdown (กันหาย)
-        const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
-        const termList = allTermsFromDB.map(t => t.term_name);
-
-        if (!teacherId) {
-            const teachers = await User.findAll({ where: { role: 'teacher' } });
-            return res.render('teacher_select', { 
-                teachers, 
-                role: req.session.role,
-                allTerms: termList, 
-                currentTerm: term 
-            });
-        }
-
-        const scheduleData = await Schedule.findAll({
-            where: { teacherId, term },
-            include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
-        });
-        const teacherInfo = await User.findByPk(teacherId);
-
-        res.render('schedule_view', { 
-            scheduleData, 
-            title: `ตารางสอน: ${teacherInfo.fullname}`,
-            role: req.session.role, 
-            type: 'teacher', 
-            currentTerm: term, // ส่งตามชื่อที่ EJS ใช้ในบรรทัด 42, 54
-            allTerms: termList,
-            teacherId: teacherId,
-            // ส่ง groupInfo หลอกไปให้หน้าครู/ห้อง เพื่อไม่ให้บรรทัด 53 Error
+            teacherId: teacherId, allTerms: termList,
             groupInfo: { group_name: 'อาจารย์ผู้สอน', level: '-', group_no: '-', major_name: '-' },
-            allSubjectsInPlan: [] // ส่งไปให้บรรทัด 72 ของ EJS ทำงานได้
+            allSubjectsInPlan: []
         });
     } catch (err) { res.status(500).send(err.message); }
 });
 
-// 2. ตารางการใช้ห้อง
 app.get('/room/schedule', checkRole(['admin', 'scheduler', 'teacher', 'student']), async (req, res) => {
     try {
         const { roomId } = req.query;
         const term = req.query.term || globalSettings.currentTerm;
-
         const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
         const termList = allTermsFromDB.map(t => t.term_name);
 
         if (!roomId) {
             const rooms = await Room.findAll();
-            const groups = await Group.findAll(); 
-            return res.render('room_select', { 
-                rooms, groups, role: req.session.role,
-                allTerms: termList, currentTerm: term 
-            });
+            return res.render('room_select', { rooms, role: req.session.role, allTerms: termList, currentTerm: term });
         }
-
         const scheduleData = await Schedule.findAll({
             where: { RoomId: roomId, term },
             include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
@@ -465,20 +382,17 @@ app.get('/room/schedule', checkRole(['admin', 'scheduler', 'teacher', 'student']
         res.render('schedule_view', { 
             scheduleData, title: `ตารางการใช้ห้อง: ${roomId}`,
             role: req.session.role, type: 'room', currentTerm: term,
-            allTerms: termList,
-            teacherId: null,
+            allTerms: termList, teacherId: null,
             groupInfo: { group_name: roomId, level: 'ห้องเรียน', group_no: '-', major_name: '-' },
             allSubjectsInPlan: []
         });
     } catch (err) { res.status(500).send(err.message); }
 });
 
-// 3. ตารางเรียนกลุ่มเรียน (เพิ่มใหม่เพื่อให้ข้อมูล groupInfo มาครบๆ)
 app.get('/group/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 'student']), async (req, res) => {
     try {
         const { groupId } = req.params;
         const term = req.query.term || globalSettings.currentTerm;
-
         const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
         const termList = allTermsFromDB.map(t => t.term_name);
 
@@ -490,83 +404,30 @@ app.get('/group/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 
         const groupInfo = await Group.findByPk(groupId) || { group_name: groupId, level: '-', group_no: '-', major_name: '-' };
 
         res.render('schedule_view', { 
-            scheduleData, 
-            title: `ตารางเรียนกลุ่ม: ${groupId}`,
-            role: req.session.role, 
-            type: 'group', 
-            currentTerm: term,
-            allTerms: termList,
-            teacherId: null,
-            groupInfo: groupInfo, // ส่งข้อมูลกลุ่มจริงๆ ไปให้บรรทัด 53, 57-59
-            allSubjectsInPlan: []
+            scheduleData, title: `ตารางเรียนกลุ่ม: ${groupId}`,
+            role: req.session.role, type: 'group', currentTerm: term,
+            allTerms: termList, teacherId: null,
+            groupInfo: groupInfo, allSubjectsInPlan: []
         });
     } catch (err) { res.status(500).send(err.message); }
 });
 
-// --- [เพิ่มส่วนนี้] 6.5 Export Excel ---
-// เพิ่ม program_manager ให้เข้าถึงได้ตามที่พี่ต้องการ
-app.get('/admin/export-excel', checkRole(['admin', 'scheduler', 'program_manager']), async (req, res) => {
-    try {
-        // เปลี่ยนมาดึงข้อมูลจากตาราง Subject (วิชาที่พี่ Add เข้าไป)
-        const subjects = await Subject.findAll({
-            order: [['subject_code', 'ASC']]
-        });
-
-        if (!subjects || subjects.length === 0) {
-            return res.send("<script>alert('❌ ไม่พบข้อมูลรายวิชาในระบบ'); window.location='/admin/manage';</script>");
-        }
-
-        // แปลงข้อมูลวิชาเป็นรูปแบบตาราง Excel
-        const data = subjects.map(s => {
-            const item = s.get({ plain: true });
-            return {
-                'รหัสวิชา': item.subject_code,
-                'ชื่อวิชา (ภาษาไทย)': item.name_th,
-                'ทฤษฎี (ชม.)': item.theory_hrs || 0,
-                'ปฏิบัติ (ชม.)': item.practice_hrs || 0,
-                'หน่วยกิต': item.credits || 0
-            };
-        });
-
-        // --- ส่วนการสร้างไฟล์ Excel ---
-        const worksheet = XLSX.utils.json_to_sheet(data);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "รายวิชาทั้งหมด");
-
-        // สร้าง Buffer และส่งไฟล์
-        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        
-        res.setHeader('Content-Disposition', 'attachment; filename=subjects_list.xlsx');
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.send(buffer);
-
-    } catch (err) {
-        console.error("Export Error:", err);
-        res.status(500).send("❌ ไม่สามารถส่งออกข้อมูลรายวิชาได้: " + err.message);
-    }
-});
-
 // --- 7. Server Start ---
-sequelize.sync({ alter: true }).then(async () => {
+// สำคัญ: เปลี่ยน alter: true เป็น force: false เพื่อป้องกันปัญหา Backup Table ใน SQLite
+sequelize.sync({ force: false }).then(async () => {
     const adminExists = await User.findOne({ where: { username: 'admin' } });
     if (!adminExists) {
         const hashedPassword = await bcrypt.hash('1234', 10);
         await User.create({
-            username: 'admin',
-            password: hashedPassword,
-            fullname: 'ผู้ดูแลระบบ',
-            role: 'admin'
+            username: 'admin', password: hashedPassword,
+            fullname: 'ผู้ดูแลระบบ', role: 'admin'
         });
         console.log('✅ Created initial admin user: admin / 1234');
     }
 
-    // สร้างข้อมูลเทอมเริ่มต้นหากในตาราง Terms ยังว่างอยู่
     const termCount = await Term.count();
     if (termCount === 0) {
-        await Term.bulkCreate([
-            { term_name: '1/2568' },
-            { term_name: '2/2568' }
-        ]);
+        await Term.bulkCreate([{ term_name: '1/2568' }, { term_name: '2/2568' }]);
         console.log('✅ Created initial terms: 1/2568, 2/2568');
     }
 
