@@ -287,8 +287,10 @@ app.post('/add-schedule', checkRole(['admin', 'scheduler']), async (req, res) =>
 });
 
 app.get('/delete-schedule/:id/:groupId', checkRole(['admin', 'scheduler']), async (req, res) => {
+    // รับค่า term จาก query string เพื่อใช้ redirect กลับไปหน้าเดิม
     const item = await Schedule.findByPk(req.params.id);
-    const term = item ? item.term : globalSettings.currentTerm;
+    const term = req.query.term || (item ? item.term : globalSettings.currentTerm);
+    
     await Schedule.destroy({ where: { id: req.params.id } });
     res.redirect(`/schedule/${req.params.groupId}?term=${term}`);
 });
@@ -335,7 +337,6 @@ app.post('/admin/edit-user', checkRole(['admin']), async (req, res) => {
     } catch (err) { res.status(500).send(err.message); }
 });
 
-// --- เพิ่มส่วนนี้: Route สำหรับลบ User ---
 app.get('/admin/delete-user/:id', checkRole(['admin']), async (req, res) => {
     try {
         if (req.params.id == req.session.userId) {
@@ -415,24 +416,24 @@ app.get('/room/schedule', checkRole(['admin', 'scheduler', 'teacher', 'student']
 });
 
 app.get('/group/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 'student']), async (req, res) => {
-try {
-        const { roomId } = req.query;
+    try {
+        const { groupId } = req.params;
         const term = req.query.term || globalSettings.currentTerm;
         const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
-        const termList = allTermsFromDB.map(t => t.term_name);
 
-        if (!roomId) {
-            const rooms = await Room.findAll();
-            const groups = await Group.findAll(); 
-            
-            return res.render('room_select', { 
-                rooms, 
-                groups, 
-                role: req.session.role, 
-                allTerms: termList, 
-                currentTerm: term 
-            });
-        }
+        const scheduleData = await Schedule.findAll({
+            where: { studentGroupId: groupId, term: term },
+            include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
+        });
+
+        res.render('schedule', { 
+            scheduleData, 
+            groupId, 
+            role: req.session.role, 
+            currentTerm: term,
+            allTerms: allTermsFromDB,
+            subjects: [], teachers: [], rooms: [] 
+        });
     } catch (err) { res.status(500).send(err.message); }
 });
 
