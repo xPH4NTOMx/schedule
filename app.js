@@ -336,9 +336,9 @@ app.post('/admin/edit-user', checkRole(['admin']), async (req, res) => {
 });
 
 // --- 6. View Schedules (Teacher/Room/Group) ---
-app.get('/teacher/schedule', checkRole(['admin', 'teacher']), async (req, res) => {
+app.get('/teacher/schedule', checkRole(['admin', 'teacher', 'scheduler']), async (req, res) => {
     try {
-        const teacherId = (req.session.role === 'teacher') ? req.session.userId : req.query.teacherId;
+        const teacherId = (req.session.role === 'teacher' && !req.query.teacherId) ? req.session.userId : req.query.teacherId;
         const term = req.query.term || globalSettings.currentTerm;
         const allTermsFromDB = await Term.findAll({ order: [['term_name', 'DESC']] });
         const termList = allTermsFromDB.map(t => t.term_name);
@@ -353,12 +353,13 @@ app.get('/teacher/schedule', checkRole(['admin', 'teacher']), async (req, res) =
         });
         const teacherInfo = await User.findByPk(teacherId);
 
-        res.render('schedule_view', { 
-            scheduleData, title: `ตารางสอน: ${teacherInfo.fullname}`,
-            role: req.session.role, type: 'teacher', currentTerm: term,
-            teacherId: teacherId, allTerms: termList,
-            groupInfo: { group_name: 'อาจารย์ผู้สอน', level: '-', group_no: '-', major_name: '-' },
-            allSubjectsInPlan: []
+        res.render('schedule', { 
+            scheduleData, 
+            groupId: `อาจารย์ ${teacherInfo.fullname.split(' ')[0]}`, 
+            role: req.session.role, 
+            currentTerm: term,
+            allTerms: allTermsFromDB,
+            subjects: [], teachers: [], rooms: [] // หน้า view ไม่ต้องใช้ list เหล่านี้
         });
     } catch (err) { res.status(500).send(err.message); }
 });
@@ -371,21 +372,36 @@ app.get('/room/schedule', checkRole(['admin', 'scheduler', 'teacher', 'student']
         const termList = allTermsFromDB.map(t => t.term_name);
 
         if (!roomId) {
-            // --- แก้ไขตรงนี้ครับ ---
             const rooms = await Room.findAll();
-            const groups = await Group.findAll({ order: [['group_id', 'ASC']] }); // ✅ ดึงกลุ่มเรียนเพิ่ม
-            
+            const groups = await Group.findAll({ order: [['group_id', 'ASC']] }); 
             return res.render('room_select', { 
                 rooms, 
-                groups, // ✅ ส่งตัวแปร groups ไปให้หน้า EJS
+                groups, 
                 role: req.session.role, 
                 allTerms: termList, 
                 currentTerm: term 
             });
-            // ----------------------
         }
-        // ... โค้ดส่วนล่างเหมือนเดิม ...
-    } catch (err) { res.status(500).send(err.message); }
+
+        // ✅ แก้ไขจุดที่หมุนค้าง: เพิ่มการดึงข้อมูลเมื่อเลือก roomId
+        const scheduleData = await Schedule.findAll({
+            where: { RoomId: roomId, term: term },
+            include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
+        });
+
+        res.render('schedule', { 
+            scheduleData, 
+            groupId: `ห้องเรียน ${roomId}`, 
+            role: req.session.role, 
+            currentTerm: term,
+            allTerms: allTermsFromDB,
+            subjects: [], teachers: [], rooms: [] 
+        });
+
+    } catch (err) { 
+        console.error(err);
+        res.status(500).send("เกิดข้อผิดพลาด: " + err.message); 
+    }
 });
 
 app.get('/group/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 'student']), async (req, res) => {
