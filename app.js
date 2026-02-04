@@ -335,6 +335,17 @@ app.post('/admin/edit-user', checkRole(['admin']), async (req, res) => {
     } catch (err) { res.status(500).send(err.message); }
 });
 
+// --- เพิ่มส่วนนี้: Route สำหรับลบ User ---
+app.get('/admin/delete-user/:id', checkRole(['admin']), async (req, res) => {
+    try {
+        if (req.params.id == req.session.userId) {
+            return res.send("<script>alert('❌ ไม่สามารถลบตัวเองได้'); history.back();</script>");
+        }
+        await User.destroy({ where: { id: req.params.id } });
+        res.send("<script>alert('✅ ลบผู้ใช้งานเรียบร้อยแล้ว'); window.location='/admin/users';</script>");
+    } catch (err) { res.status(500).send(err.message); }
+});
+
 // --- 6. View Schedules (Teacher/Room/Group) ---
 app.get('/teacher/schedule', checkRole(['admin', 'teacher', 'scheduler']), async (req, res) => {
     try {
@@ -359,7 +370,7 @@ app.get('/teacher/schedule', checkRole(['admin', 'teacher', 'scheduler']), async
             role: req.session.role, 
             currentTerm: term,
             allTerms: allTermsFromDB,
-            subjects: [], teachers: [], rooms: [] // หน้า view ไม่ต้องใช้ list เหล่านี้
+            subjects: [], teachers: [], rooms: [] 
         });
     } catch (err) { res.status(500).send(err.message); }
 });
@@ -383,7 +394,6 @@ app.get('/room/schedule', checkRole(['admin', 'scheduler', 'teacher', 'student']
             });
         }
 
-        // ✅ แก้ไขจุดที่หมุนค้าง: เพิ่มการดึงข้อมูลเมื่อเลือก roomId
         const scheduleData = await Schedule.findAll({
             where: { RoomId: roomId, term: term },
             include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
@@ -413,12 +423,11 @@ try {
 
         if (!roomId) {
             const rooms = await Room.findAll();
-            const groups = await Group.findAll(); // ✅ 1. เพิ่มบรรทัดนี้เพื่อดึงกลุ่มเรียน
+            const groups = await Group.findAll(); 
             
-            // ✅ 2. ส่ง groups เข้าไปใน render ด้วย
             return res.render('room_select', { 
                 rooms, 
-                groups, // ส่งตัวแปรนี้ไป
+                groups, 
                 role: req.session.role, 
                 allTerms: termList, 
                 currentTerm: term 
@@ -428,7 +437,6 @@ try {
 });
 
 // --- 7. Server Start ---
-// สำคัญ: เปลี่ยน alter: true เป็น force: false เพื่อป้องกันปัญหา Backup Table ใน SQLite
 sequelize.sync({ force: false }).then(async () => {
     const adminExists = await User.findOne({ where: { username: 'admin' } });
     if (!adminExists) {
