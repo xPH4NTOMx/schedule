@@ -504,36 +504,50 @@ app.get('/group/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 
 });
 
 // --- [เพิ่มส่วนนี้] 6.5 Export Excel ---
-app.get('/admin/export-excel', checkRole(['admin', 'scheduler']), async (req, res) => {
+// เพิ่ม program_manager ให้เข้าถึงได้ตามที่พี่ต้องการ
+app.get('/admin/export-excel', checkRole(['admin', 'scheduler', 'program_manager']), async (req, res) => {
     try {
         const schedules = await Schedule.findAll({
-            include: [{ model: Subject }, { model: User, as: 'Teacher' }, { model: Room }]
+            include: [
+                { model: Subject }, 
+                { model: User, as: 'Teacher' }, 
+                { model: Room }
+            ]
         });
 
-        // แปลงข้อมูลเป็นรูปแบบตารางสำหรับ Excel
-        const data = schedules.map(s => ({
-            'ภาคเรียน': s.term,
-            'กลุ่มเรียน': s.studentGroupId,
-            'วัน': s.day,
-            'คาบเริ่ม': s.start_slot,
-            'คาบสิ้นสุด': s.end_slot,
-            'รหัสวิชา': s.SubjectSubjectCode,
-            'ชื่อวิชา': s.Subject ? s.Subject.name_th : '-',
-            'ผู้สอน': s.Teacher ? s.Teacher.fullname : '-',
-            'ห้อง': s.RoomId
-        }));
+        const data = schedules.map(s => {
+            const item = s.get({ plain: true });
+            
+            // ตรวจสอบกรณีเป็น "เวลาพัก" (BREAK)
+            const isBreak = item.SubjectSubjectCode === 'BREAK' || !item.SubjectSubjectCode;
 
+            return {
+                'ภาคเรียน': item.term || '-',
+                'กลุ่มเรียน': item.studentGroupId || '-',
+                'วัน': item.day || '-',
+                'คาบเริ่ม': item.start_slot || 0,
+                'คาบสิ้นสุด': item.end_slot || 0,
+                // แก้ไข: ดึงรหัสวิชาจาก Subject Direct หรือ Foreign Key
+                'รหัสวิชา': isBreak ? '-' : (item.Subject?.subject_code || item.SubjectSubjectCode || '-'),
+                // แก้ไข: ดึงชื่อวิชาจาก Model Subject
+                'ชื่อวิชา': isBreak ? 'พัก' : (item.Subject?.name_th || 'ไม่ระบุชื่อวิชา'),
+                'ผู้สอน': item.Teacher?.fullname || '-',
+                'ห้อง': item.RoomId || '-'
+            };
+        });
+
+        // --- ส่วนการสร้างไฟล์ Excel (เหมือนเดิม) ---
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Schedules");
-
-        // สร้าง Buffer และส่งไฟล์ให้ Browser ดาวน์โหลด
         const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        
         res.setHeader('Content-Disposition', 'attachment; filename=schedule_export.xlsx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
 
     } catch (err) {
+        console.error("Export Error:", err);
         res.status(500).send("❌ ไม่สามารถส่งออกข้อมูลได้: " + err.message);
     }
 });
