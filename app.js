@@ -509,34 +509,31 @@ app.get('/admin/export-excel', checkRole(['admin', 'scheduler', 'program_manager
     try {
         const schedules = await Schedule.findAll({
             include: [
-                { model: Subject }, 
-                { model: User, as: 'Teacher' }, 
+                { model: Subject },
+                { model: User, as: 'Teacher' },
                 { model: Room }
             ]
         });
 
         const data = schedules.map(s => {
-            const item = s.get({ plain: true });
-            
-            // ตรวจสอบกรณีเป็น "เวลาพัก" (BREAK)
-            const isBreak = item.SubjectSubjectCode === 'BREAK' || !item.SubjectSubjectCode;
+            // ดึงข้อมูลออกมาเป็น Object ธรรมดา
+            const raw = s.get({ plain: true });
 
             return {
-                'ภาคเรียน': item.term || '-',
-                'กลุ่มเรียน': item.studentGroupId || '-',
-                'วัน': item.day || '-',
-                'คาบเริ่ม': item.start_slot || 0,
-                'คาบสิ้นสุด': item.end_slot || 0,
-                // แก้ไข: ดึงรหัสวิชาจาก Subject Direct หรือ Foreign Key
-                'รหัสวิชา': isBreak ? '-' : (item.Subject?.subject_code || item.SubjectSubjectCode || '-'),
-                // แก้ไข: ดึงชื่อวิชาจาก Model Subject
-                'ชื่อวิชา': isBreak ? 'พัก' : (item.Subject?.name_th || 'ไม่ระบุชื่อวิชา'),
-                'ผู้สอน': item.Teacher?.fullname || '-',
-                'ห้อง': item.RoomId || '-'
+                'ภาคเรียน': raw.term || '-',
+                'กลุ่มเรียน': raw.studentGroupId || '-',
+                'วัน': raw.day || '-',
+                'คาบเริ่ม': raw.start_slot || 0,
+                'คาบสิ้นสุด': raw.end_slot || 0,
+                // จุดที่แก้: ใช้ชื่อตาม Model ที่พี่ตั้งไว้
+                'รหัสวิชา': raw.SubjectSubjectCode || (raw.Subject ? raw.Subject.subject_code : '-'),
+                'ชื่อวิชา': raw.Subject ? raw.Subject.name_th : (raw.SubjectSubjectCode === 'BREAK' ? 'พัก' : '-'),
+                'ผู้สอน': raw.Teacher ? raw.Teacher.fullname : '-',
+                'ห้อง': raw.RoomId || '-'
             };
         });
 
-        // --- ส่วนการสร้างไฟล์ Excel (เหมือนเดิม) ---
+        // --- ส่วนสร้าง Excel (เหมือนเดิม) ---
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Schedules");
