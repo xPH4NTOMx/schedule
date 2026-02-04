@@ -242,7 +242,7 @@ app.get('/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 'stude
 });
 
 app.post('/add-schedule', checkRole(['admin', 'scheduler']), async (req, res) => {
-    const { day, start_slot, teacherId, roomId, subjectCode, studentGroupId, term } = req.body;
+    let { day, start_slot, teacherId, roomId, subjectCode, studentGroupId, term } = req.body;
     try {
         let start = Number(start_slot);
         let end;
@@ -264,8 +264,13 @@ app.post('/add-schedule', checkRole(['admin', 'scheduler']), async (req, res) =>
         const totalHours = Number(subject.theory_hrs || 0) + Number(subject.practice_hrs || 0);
         end = start + totalHours;
 
+        // --- เพิ่มเติม: ถ้าเวลาคร่อมพักกลางวัน (คาบที่ 5) ให้ขยับไปเริ่มคาบ 6 ---
+        if (start <= 5 && end > 5) {
+            start = 6;
+            end = start + totalHours;
+        }
+
         if (end > 13) return res.send(`<script>alert('❌ เกินเวลาตารางเรียน!'); history.back();</script>`);
-        if (start < 5 && end > 5) return res.send("<script>alert('❌ คร่อมเวลาพักกลางวันไม่ได้'); history.back();</script>");
 
         const conflict = await Schedule.findOne({
             where: {
