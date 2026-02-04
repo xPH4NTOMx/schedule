@@ -242,7 +242,7 @@ app.get('/schedule/:groupId', checkRole(['admin', 'scheduler', 'teacher', 'stude
 });
 
 app.post('/add-schedule', checkRole(['admin', 'scheduler']), async (req, res) => {
-    let { day, start_slot, teacherId, roomId, subjectCode, studentGroupId, term } = req.body;
+    const { day, start_slot, teacherId, roomId, subjectCode, studentGroupId, term } = req.body;
     try {
         let start = Number(start_slot);
         let end;
@@ -262,12 +262,14 @@ app.post('/add-schedule', checkRole(['admin', 'scheduler']), async (req, res) =>
         if (!subject) return res.send("<script>alert('❌ ไม่พบวิชา'); history.back();</script>");
 
         const totalHours = Number(subject.theory_hrs || 0) + Number(subject.practice_hrs || 0);
+        
+        // คำนวณเวลาจบเบื้องต้น
         end = start + totalHours;
 
-        // --- เพิ่มเติม: ถ้าเวลาคร่อมพักกลางวัน (คาบที่ 5) ให้ขยับไปเริ่มคาบ 6 ---
+        // Logic ใหม่: ถ้าเวลาที่เลือก "คร่อม" หรือ "คาบเกี่ยว" ช่วงพักกลางวัน (ช่องที่ 5) 
+        // ให้บวกเวลาเพิ่มอีก 1 ช่อง เพื่อเว้นที่ให้พัก แต่ให้ชั่วโมงเรียนยังครบตามจำนวนวิชา
         if (start <= 5 && end > 5) {
-            start = 6;
-            end = start + totalHours;
+            end = end + 1;
         }
 
         if (end > 13) return res.send(`<script>alert('❌ เกินเวลาตารางเรียน!'); history.back();</script>`);
